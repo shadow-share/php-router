@@ -90,6 +90,8 @@ class Here_Router {
                 } else {
                     $this->_create_hook_handler($handler_key, $handler);
                 }
+            } else {
+                $this->emit_error($handler_key, $handler);
             }
         } else {
             throw new Exception("fatal error: anyonmous call({$call_name}) not found");
@@ -287,7 +289,6 @@ class Here_Router {
             }
 
             $re_router_name = substr($current_node, 1);
-
             if (!array_key_exists($re_router_name, $tree[self::$RE_ROUTER])) {
                 $tree[self::$RE_ROUTER][$re_router_name] = array();
             }
@@ -379,11 +380,13 @@ class Here_Router {
 
                 if ($re_name_pos && $re[$re_name_pos - 1] != '\\') {
                     $re_name = substr($test_re, $re_name_pos + 1);
-                    $test_re = substr($re, 0, $re_name_pos - 1);
+                    $test_re = substr($re, 0, $re_name_pos);
                 }
+                var_dump($re_name, $test_re);
 
                 # @^pattern$@, must be full matching
                 $test_re = self::$RE_ROUTER . '^' . $test_re . '$' . self::$RE_ROUTER;
+                var_dump($test_re);
                 if (preg_match($test_re, $require_node, $matches)) {
                     if (array_key_exists('errno', $params)) {
                         unset($params['errno']);
@@ -423,7 +426,7 @@ class Here_Router {
             $var_node = $tree[self::$VAR_ROUTER];
             foreach ($var_node as $key => $val) {
                 if ($pos = strpos($key, ':')) {
-                    if (array_key_exists($key[$pos + 1], $this->_check) && !call_user_func('ctype_' . $this->_check[$key[$pos + 1]], $require_node)) {
+                    if (array_key_exists($key[$pos + 1], $this->_validate) && !call_user_func('ctype_' . $this->_validate[$key[$pos + 1]], $require_node)) {
                         $params['errno'] = '404';
                         $params['error'] = 'var-matching validate failure';
 
