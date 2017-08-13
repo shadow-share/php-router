@@ -35,36 +35,17 @@ abstract class RouteNode {
     abstract public function hooks();
 
     /**
-     * definition match callback function
+     * main entry
      *
+     * @param array $parameters
+     * @return mixed
      */
-    public function __construct() {
-    }
-
-    /**
-     * current request url path
-     *
-     * @return string
-     */
-    public static function get_current_url(array $parameters) {
-        return $parameters['__url__'];
-    }
-
-    /**
-     * current request method
-     *
-     * @return string
-     */
-    public function get_current_method(array $parameters) {
-        return $parameters['__method__'];
-    }
-
     abstract function entry_point(array $parameters);
 
     /**
-     * store Widget_Route parse parameters
+     * definition match callback function
      *
-     * @var array
      */
-    protected $_router_parameters = null;
+    final public function __construct() {
+    }
 }

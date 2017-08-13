@@ -8,45 +8,99 @@
  * @license   MIT License
  * @link      https://github.com/shadow-share/php-router
  */
-
 namespace Router;
 
 
+/**
+ * Class Router
+ * @package Router
+ */
 class Router {
-    # routing tree
+    /**
+     * router node tree
+     *
+     * @var array
+     */
     private $_tree = array();
 
-    # error handler
+    /**
+     * router error handler
+     *
+     * @var array
+     */
     private $_error = array();
 
-    # hook function
+    /**
+     * hooks methods
+     *
+     * @var array
+     */
     private $_hooks = array();
 
-    # server variable
+    /**
+     * server variable
+     *
+     * @var array
+     */
     private $_variable = array();
 
-    # callback params
+    /**
+     * callback params
+     *
+     * @var array
+     */
     private $_callback_params = array();
 
-    # url validate, using ctype
+    /**
+     * url validate, using ctype
+     *
+     * @var array
+     */
     private $_validate = array('A' => 'alnum', 'a' => 'alpha', 'd' => 'digit', 'l' => 'lower', 'u' => 'upper');
 
-    # all http request method
+    /**
+     * all http request method
+     *
+     * @var array
+     */
     private static $_request_methods = array('GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'ALL');
 
-    # construct function
-    public function __construct($method = null, $url = null) {
+    /**
+     * Here_Router constructor.
+     */
+    public function __construct() {
         # initialize
         $this->_tree = array();
         $this->_error = array();
         $this->_hooks = array();
 
         # server variables
-        $this->_variable['request_method'] = $method ?: $_SERVER['REQUEST_METHOD'];
-        $this->_variable['current_url'] = parse_url(($url ?: $_SERVER['REQUEST_URI']), PHP_URL_PATH);
+        $this->_variable['request_method'] = strtolower($_SERVER['REQUEST_METHOD']);
+        $this->_variable['current_url'] = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
     }
 
-    # add new router node
+    /**
+     * register default handler, execute on full-match error handler not found
+     *
+     * @param callable $callback
+     * @throws \Exception
+     */
+    public function default_error($callback) {
+        if (!is_callable($callback)) {
+            throw new \Exception("Router:default_error::parameter type invalid");
+        }
+        // create error handler node
+        $this->_create_error_handler('__default__', $callback);
+    }
+
+    /**
+     * add new node to router node tree
+     *
+     * @param string $call_name
+     * @param array $args
+     * @return $this
+     * @throws \Exception
+     */
     public function __call($call_name, $args) {
         $call_name = strtoupper($call_name);
 
@@ -99,16 +153,25 @@ class Router {
                 if ($call_name == 'ERROR') {
                     $this->emit_error($handler_key, $handler);
                 } else {
-                    throw new \Exception('can only dispatch error handler', 1996);
+                    throw new \Exception("Router:__call::can only dispatch error handler");
                 }
             }
         } else {
-            throw new \Exception("fatal error: anonymous call({$call_name}) not found");
+            throw new \Exception("Router:__call::fatal error: anonymous call({$call_name}) not found");
         }
 
         return $this;
     }
 
+    /**
+     * create multi node by multi HttpMethod/urls
+     *
+     * @param array $methods
+     * @param array $urls
+     * @param callable $callback
+     * @param array $hook
+     * @throws \Exception
+     */
     public function match($methods, $urls, $callback, $hook) {
         if (!is_array($methods) && is_string($methods)) {
             $methods = array($methods);
@@ -117,6 +180,11 @@ class Router {
             $method = strtoupper($method);
             return in_array($method, self::$_request_methods);
         });
+        if (in_array('ALL', $methods)) {
+            $methods = self::$_request_methods;
+            // pop 'ALL'
+            array_pop($methods);
+        }
 
         if (!is_array($urls) && is_string($urls)) {
             $urls = array($urls);
@@ -126,7 +194,7 @@ class Router {
         });
 
         if (!is_callable($callback)) {
-            throw new \Exception('callback is non-callable', 1996);
+            throw new \Exception('Router:match::callback is non-callable');
         } else {
             $callback = array($callback);
         }
@@ -142,13 +210,24 @@ class Router {
         $this->_create_router($methods, $urls, $callback, $hook);
     }
 
-    # ! Please do not use this method, this method is very dangerous
+    /**
+     * ! Please do not use this method, this method is very dangerous
+     *
+     * @param array $router_tree
+     * @param array $router_error
+     * @param array $router_hooks
+     */
     public function __import_router_tree(array $router_tree, array $router_error, array $router_hooks) {
         $this->_tree = $router_tree;
         $this->_error = $router_error;
         $this->_hooks = $router_hooks;
     }
 
+    /**
+     * export internal variables
+     *
+     * @return array
+     */
     public function __export_router_tree() {
         return array(
             'tree'  => $this->_tree,
@@ -205,7 +284,7 @@ class Router {
 
         list($callback, $hooks) = $this->_resolve($request_method, $request_url, $this->_callback_params);
 
-        # raise error
+        // raise error
         if (($callback == null && $hooks == null) || (empty($callback) && empty($hooks))) {
             if (array_key_exists('errno', $this->_callback_params)) {
                 $this->emit_error($this->_callback_params['errno'], $this->_callback_params);
@@ -216,21 +295,21 @@ class Router {
                 $this->emit_error($this->_callback_params['errno'], $this->_callback_params);
             }
 
-            if (self::$_hook_error_after_exit_ == true) {
+            if (self::$error_occurs_after_exit == true) {
                 exit();
             }
         }
 
-        # check hook return value is true?
+        // check hook return value is true?
         if (!empty($hooks)) {
             foreach ($hooks as $hook) {
                 if (!$this->_emit_hook($hook, $this->_callback_params)) {
-                    $this->_callback_params['errno'] = self::$_default_error_code;
+                    $this->_callback_params['errno'] = self::$hook_default_error_code;
                     $this->_callback_params['error'] = 'url hook function validate error';
                     $this->emit_error($this->_callback_params['errno'], $this->_callback_params);
 
                     # sys definition value
-                    if (self::$_hook_error_after_exit_ == true) {
+                    if (self::$error_occurs_after_exit == true) {
                         exit();
                     }
                 }
@@ -245,32 +324,68 @@ class Router {
         }
     }
 
+    /**
+     * trigger error handler
+     *
+     * @param string|int $error_code
+     * @throws \Exception
+     */
     public function emit_error($error_code/* ... other args ... */) {
         $error_code = intval($error_code);
-        header(join(' ', array('Request-Status:', strval($error_code))), null, $error_code);
+        header("X-Router-Status: {$error_code}", true, $error_code);
 
         if (!array_key_exists($error_code, $this->_error)) {
-            throw new \Exception('error handler not found', 1996);
+            if (!array_key_exists('__default__', $this->_error)) {
+                throw new \Exception("Router:emit_error::error handler or default handler not found");
+            }
+            // change to default error handler
+            $error_code = '__default__';
         }
 
         $args = func_get_args();
-        if (call_user_func($this->_error[$error_code], $args) || self::$_emit_error_after_exit_) {
+        if (call_user_func($this->_error[$error_code], $args) || self::$error_occurs_after_exit) {
             exit;
         }
     }
 
+    /**
+     * getting request method
+     *
+     * @return string
+     */
     public function request_method() {
         return $this->_variable['request_method'];
     }
 
+    /**
+     * getting current request url
+     *
+     * @return string
+     */
     public function current_url() {
         return $this->_variable['current_url'];
     }
 
+    /**
+     * trigger hook method
+     *
+     * @param string $hook_name
+     * @param array $params
+     * @return mixed
+     */
     private function _emit_hook($hook_name, $params) {
         return $this->_hooks[$hook_name]($params);
     }
 
+    /**
+     * create router node to router tree
+     *
+     * @param array $methods
+     * @param array $urls
+     * @param callable $callback
+     * @param array $hook
+     * @return $this
+     */
     private function _create_router($methods, $urls, $callback, $hook) {
         foreach ($methods as $method) {
             if (!array_key_exists($method, $this->_tree)) {
@@ -286,6 +401,16 @@ class Router {
         return $this;
     }
 
+    /**
+     * Create routing node recursive
+     *
+     * @param array $tree
+     * @param array $new_node
+     * @param callable $callback
+     * @param array $hook
+     * @return $this|Router
+     * @throws \Exception
+     */
     private function _create_router_node(&$tree, $new_node, $callback, $hook) {
         $current_node = array_shift($new_node);
 
@@ -315,11 +440,11 @@ class Router {
             return self::_create_router_node($tree[self::$RE_ROUTER][$re_router_name], $new_node, $callback, $hook);
         }
 
-        # full-match, $current_node === '...'
+        # full-match, $current_node === '???'
         if ($current_node && $current_node === self::$FULL_MATCH) {
             // check full-match is end-node
             if (count($new_node) !== 0) {
-                throw new \Exception("full-match must be in the end-node", 1996);
+                throw new \Exception("Router:_create_router_node::full-match must be in the end-node");
             }
             // create node
             if (!array_key_exists(self::$FULL_MATCH, $tree)) {
@@ -354,18 +479,38 @@ class Router {
         return $this;
     }
 
+    /**
+     * create error handler
+     *
+     * @param string|int $error
+     * @param callable $handler
+     */
     private function _create_error_handler($error, $handler) {
         $this->_error[$error] = $handler;
     }
 
+    /**
+     * create hook handler
+     *
+     * @param string $hook_name
+     * @param callable $handler
+     */
     private function _create_hook_handler($hook_name, $handler) {
         $this->_hooks[$hook_name] = $handler;
     }
 
+    /**
+     * from router tree find callback and hook name
+     *
+     * @param string $request_method
+     * @param string $request_url
+     * @param array $params
+     * @return array
+     */
     private function _resolve($request_method, $request_url, &$params) {
         if (!array_key_exists($request_method, $this->_tree)) {
-            $params['errno'] = '404';
-            $params['error'] = 'router not found this request method';
+            $params['errno'] = '405';
+            $params['error'] = 'Request failed: method not allowed';
 
             return array(null, null);
         }
@@ -508,8 +653,14 @@ class Router {
         return array(null, null);
     }
 
+    /**
+     * parser error router classes
+     *
+     * @param array $error_route_list
+     */
     private function _parser_error_route($error_route_list) {
         foreach ($error_route_list as $error_route) {
+            /* @var \Router\Abstracts\ErrorNode $route_class */
             $route_class = new $error_route();
             $error_code = $route_class->errno();
 
@@ -517,8 +668,14 @@ class Router {
         }
     }
 
+    /**
+     * parser hook router classes
+     *
+     * @param array $hook_route_list
+     */
     private function _parser_hook_route($hook_route_list) {
         foreach ($hook_route_list as $hook_route) {
+            /* @var \Router\Abstracts\HookNode $route_class */
             $route_class = new $hook_route();
             $hook_name = $route_class->hook_name();
 
@@ -526,8 +683,12 @@ class Router {
         }
     }
 
+    /**
+     * @param $path_route_list
+     */
     private function _parser_path_route($path_route_list) {
         foreach ($path_route_list as $path_route) {
+            /* @var \Router\Abstracts\RouteNode $route_class */
             $route_class = new $path_route();
             $urls = $route_class->urls();
             $methods = $route_class->methods();
@@ -558,12 +719,9 @@ class Router {
     # hook node
     private static $HOOK = '__hk__';
 
-    # exit on hook error flag
-    private static $_hook_error_after_exit_ = true;
+    # exit on hook verify error
+    private static $error_occurs_after_exit = true;
 
-    #
-    private static $_emit_error_after_exit_ = true;
-
-    # default error code
-    private static $_default_error_code = 403;
+    # default code for hook error
+    private static $hook_default_error_code = 403;
 }
